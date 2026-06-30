@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Phần mềm chỉnh sửa maket</title>
+  <title>Tool chỉnh sửa market</title>
   <style>
     :root {
       color-scheme: light;
@@ -321,8 +321,10 @@
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <h1>CHỈNH SỬA MARKET 2026</h1>
-      <button class="btn icon" id="resetBtn" title="Khôi phục mẫu">↺</button>
+      <h1 style="color:#5b21b6;font-weight:900;">
+     EDIT MARKET 2026
+     </h1>
+      <div style="display:flex;gap:6px"><button class="btn icon" id="undoBtn" title="Hoàn tác">↶</button><button class="btn icon" id="resetBtn" title="Khôi phục mẫu">↺</button></div>
     </div>
     <p class="hint">Chọn một dòng chữ để sửa. Có thể kéo trực tiếp trên maket để đổi vị trí, rồi xuất PNG khi hoàn tất.</p>
     <div class="author">
@@ -480,6 +482,26 @@
     let selected = 0;
     let zoom = 1;
     let dragging = false;
+    let historyStack = [];
+    let isUndoing = false;
+
+    function saveHistory() {
+      if (isUndoing) return;
+      historyStack.push(JSON.stringify(state));
+      if (historyStack.length > 50) historyStack.shift();
+    }
+
+    function undoLast() {
+      if (!historyStack.length) return;
+      isUndoing = true;
+      state = JSON.parse(historyStack.pop());
+      selected = Math.min(selected, state.layers.length - 1);
+      loadBackgroundImage(state.backgroundImage || '');
+      syncControls();
+      render();
+      isUndoing = false;
+    }
+
     let dragOffset = { x: 0, y: 0 };
 
     const refs = {
@@ -672,6 +694,7 @@
     }
 
     function updateLayer(key, value) {
+      saveHistory();
       activeLayer()[key] = value;
       renderLayerList();
       render();
@@ -762,7 +785,7 @@
       });
     }
 
-    refs.bgColor.addEventListener('input', event => {
+    refs.bgColor.addEventListener('input', event => { saveHistory();
       state.background = event.target.value;
       render();
     });
@@ -784,7 +807,7 @@
       refs.bgImageFile.value = '';
     });
 
-    refs.clearBgImage.addEventListener('click', () => {
+    refs.clearBgImage.addEventListener('click', () => { saveHistory();
       state.backgroundImage = '';
       loadBackgroundImage('');
       setStatus('Da xoa anh nen.');
@@ -828,14 +851,14 @@
     refs.lineHeight.addEventListener('input', event => updateLayer('lineHeight', Number(event.target.value)));
     refs.align.addEventListener('input', event => updateLayer('align', event.target.value));
 
-    document.getElementById('addLayer').addEventListener('click', () => {
+    document.getElementById('addLayer').addEventListener('click', () => { saveHistory();
       state.layers.push({ text: 'Dòng chữ mới', x: 2340, y: 1550, size: 110, font: 'Times New Roman', color: '#fff200', style: 'bold', align: 'center', lineHeight: 1.08 });
       selected = state.layers.length - 1;
       syncControls();
       render();
     });
 
-    document.getElementById('deleteLayer').addEventListener('click', () => {
+    document.getElementById('deleteLayer').addEventListener('click', () => { saveHistory();
       if (state.layers.length <= 1) return;
       state.layers.splice(selected, 1);
       selected = Math.max(0, selected - 1);
@@ -843,7 +866,12 @@
       render();
     });
 
+    document.getElementById('undoBtn').addEventListener('click', () => {
+      undoLast();
+    });
+
     document.getElementById('resetBtn').addEventListener('click', () => {
+      saveHistory();
       state = structuredClone(defaults);
       selected = 0;
       loadBackgroundImage('');
