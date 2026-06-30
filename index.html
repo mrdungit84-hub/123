@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tool chỉnh sửa market</title>
+  <title>Tool chỉnh sửa Maket</title>
   <style>
     :root {
       color-scheme: light;
@@ -110,6 +110,12 @@
     }
 
     .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .layer-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
@@ -255,6 +261,7 @@
     }
 
     .stage {
+      position: relative;
       min-width: 0;
       min-height: 0;
       overflow: auto;
@@ -280,6 +287,28 @@
 
     canvas.dragging {
       cursor: grabbing;
+    }
+
+    .inline-text-editor {
+      position: fixed;
+      z-index: 10;
+      display: none;
+      min-width: 80px;
+      min-height: 40px;
+      padding: 0;
+      border: 2px solid rgba(255, 255, 255, .95);
+      border-radius: 4px;
+      background: rgba(0, 0, 0, .08);
+      color: inherit;
+      outline: 2px solid rgba(179, 27, 36, .55);
+      outline-offset: 2px;
+      resize: none;
+      overflow: hidden;
+      box-shadow: 0 0 0 2px rgba(0, 0, 0, .18);
+    }
+
+    .inline-text-editor.visible {
+      display: block;
     }
 
     .mini {
@@ -322,7 +351,7 @@
   <aside class="sidebar">
     <div class="brand">
       <h1 style="color:#5b21b6;font-weight:900;">
-     EDIT MARKET 2026
+     EDIT MAKET 2026
      </h1>
       <div style="display:flex;gap:6px"><button class="btn icon" id="undoBtn" title="Hoàn tác">↶</button><button class="btn icon" id="resetBtn" title="Khôi phục mẫu">↺</button></div>
     </div>
@@ -370,7 +399,10 @@
       <div class="group">
         <div class="group-title">Các dòng chữ</div>
         <div class="layer-list" id="layerList"></div>
-        <button class="btn" id="addLayer">+ Thêm dòng</button>
+        <div class="layer-actions">
+          <button class="btn" id="addLayer">+ Thêm dòng</button>
+          <button class="btn" id="deleteLayer">Xóa dòng đang chọn</button>
+        </div>
       </div>
 
       <div class="group editor" id="editor">
@@ -433,7 +465,6 @@
             </select>
           </label>
         </div>
-        <button class="btn" id="deleteLayer">Xóa dòng đang chọn</button>
       </div>
     </div>
   </aside>
@@ -453,6 +484,7 @@
     </div>
     <div class="stage">
       <canvas id="canvas" width="4679" height="2533"></canvas>
+      <textarea class="inline-text-editor" id="inlineTextEditor" spellcheck="false"></textarea>
     </div>
   </main>
 
@@ -524,6 +556,8 @@
       y: document.getElementById('yInput'),
       lineHeight: document.getElementById('lineHeightInput'),
       align: document.getElementById('alignInput'),
+      stage: document.querySelector('.stage'),
+      inlineEditor: document.getElementById('inlineTextEditor'),
       zoomLabel: document.getElementById('zoomLabel'),
       jsonFile: document.getElementById('jsonFile'),
       statusText: document.getElementById('statusText'),
@@ -531,6 +565,8 @@
     };
 
     let lastDownloadUrl = '';
+    let inlineEditing = false;
+    let inlineEditIndex = -1;
     const backgroundImage = new Image();
     backgroundImage.onload = () => render();
 
@@ -640,7 +676,10 @@
         targetCtx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
         targetCtx.restore();
       }
-      state.layers.forEach((layer, index) => drawTextLayer(targetCtx, layer, includeSelection && index === selected));
+      state.layers.forEach((layer, index) => {
+        if (inlineEditing && index === inlineEditIndex && targetCtx === ctx) return;
+        drawTextLayer(targetCtx, layer, includeSelection && index === selected);
+      });
     }
 
     function render(includeSelection = true) {
@@ -691,12 +730,55 @@
       refs.lineHeight.value = layer.lineHeight;
       refs.align.value = layer.align;
       renderLayerList();
+      placeInlineEditor();
     }
 
     function updateLayer(key, value) {
       saveHistory();
       activeLayer()[key] = value;
       renderLayerList();
+      render();
+    }
+
+    function placeInlineEditor() {
+      if (!inlineEditing) return;
+      const layer = activeLayer();
+      const box = measureLayer(layer);
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width / canvas.width;
+      const scaleY = rect.height / canvas.height;
+      const editor = refs.inlineEditor;
+      editor.style.left = `${rect.left + box.x * scaleX}px`;
+      editor.style.top = `${rect.top + box.y * scaleY}px`;
+      editor.style.width = `${box.w * scaleX}px`;
+      editor.style.height = `${box.h * scaleY}px`;
+      editor.style.font = `${layer.style} ${layer.size * scaleY}px "${layer.font}"`;
+      editor.style.lineHeight = String(layer.lineHeight);
+      editor.style.textAlign = layer.align;
+      editor.style.color = layer.color;
+    }
+
+    function openInlineEditor(index) {
+      selected = index;
+      inlineEditing = true;
+      inlineEditIndex = index;
+      saveHistory();
+      syncControls();
+      render();
+
+      const editor = refs.inlineEditor;
+      editor.value = activeLayer().text;
+      editor.classList.add('visible');
+      placeInlineEditor();
+      editor.focus();
+      editor.select();
+    }
+
+    function closeInlineEditor() {
+      if (!inlineEditing) return;
+      refs.inlineEditor.classList.remove('visible');
+      inlineEditing = false;
+      inlineEditIndex = -1;
       render();
     }
 
@@ -883,12 +965,14 @@
       zoom = Math.min(1.6, +(zoom + 0.1).toFixed(2));
       canvas.style.width = `${Math.round(1180 * zoom)}px`;
       refs.zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+      placeInlineEditor();
     });
 
     document.getElementById('zoomOut').addEventListener('click', () => {
       zoom = Math.max(0.4, +(zoom - 0.1).toFixed(2));
       canvas.style.width = `${Math.round(1180 * zoom)}px`;
       refs.zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+      placeInlineEditor();
     });
 
     document.getElementById('exportPng').addEventListener('click', async () => {
@@ -933,6 +1017,7 @@
     });
 
     canvas.addEventListener('pointerdown', event => {
+      closeInlineEditor();
       const point = canvasPoint(event);
       const hit = hitTest(point);
       if (hit === -1) return;
@@ -961,8 +1046,42 @@
     canvas.addEventListener('pointerup', event => {
       dragging = false;
       canvas.classList.remove('dragging');
-      canvas.releasePointerCapture(event.pointerId);
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
     });
+
+    canvas.addEventListener('dblclick', event => {
+      const point = canvasPoint(event);
+      const hit = hitTest(point);
+      if (hit === -1) return;
+      event.preventDefault();
+      openInlineEditor(hit);
+    });
+
+    refs.inlineEditor.addEventListener('input', event => {
+      const layer = activeLayer();
+      layer.text = event.target.value;
+      refs.text.value = layer.text;
+      renderLayerList();
+      render();
+      placeInlineEditor();
+    });
+
+    refs.inlineEditor.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeInlineEditor();
+      }
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        closeInlineEditor();
+      }
+    });
+
+    refs.inlineEditor.addEventListener('blur', closeInlineEditor);
+    refs.stage.addEventListener('scroll', placeInlineEditor);
+    window.addEventListener('resize', placeInlineEditor);
 
     baseImage.onload = () => render();
     syncControls();
