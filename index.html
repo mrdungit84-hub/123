@@ -117,7 +117,7 @@
 
     .layer-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 8px;
     }
 
@@ -402,6 +402,7 @@
         <div class="layer-actions">
           <button class="btn" id="addLayer">+ Thêm dòng</button>
           <button class="btn" id="deleteLayer">Xóa dòng đang chọn</button>
+          <button class="btn" id="centerAllText">Căn giữa maket</button>
         </div>
       </div>
 
@@ -946,6 +947,18 @@
       selected = Math.max(0, selected - 1);
       syncControls();
       render();
+    });
+
+    document.getElementById('centerAllText').addEventListener('click', () => {
+      saveHistory();
+      closeInlineEditor();
+      state.layers.forEach(layer => {
+        layer.x = canvas.width / 2;
+        layer.align = 'center';
+      });
+      syncControls();
+      render();
+      setStatus('Đã căn giữa toàn bộ văn bản.');
     });
 
     document.getElementById('undoBtn').addEventListener('click', () => {
